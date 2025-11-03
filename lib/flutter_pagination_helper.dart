@@ -8,9 +8,6 @@ library flutter_pagination_helper;
 
 // Mixins
 export 'src/mixins/pagination_mixin.dart';
-// Models
-export 'src/models/api_response.dart';
-export 'src/models/response_status.dart';
-export 'src/widgets/paginated_grid_view.dart';
 // Widgets
+export 'src/widgets/paginated_grid_view.dart';
 export 'src/widgets/paginated_list_view.dart';

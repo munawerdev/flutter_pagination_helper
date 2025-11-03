@@ -1,39 +1,29 @@
 # Flutter Pagination Helper
 
-A lightweight and reusable Flutter package for implementing pagination with minimal boilerplate. Perfect for apps that need to load data incrementally from APIs.
+A lightweight and **state-management-agnostic** Flutter package for implementing pagination with minimal boilerplate. Works with **ANY** state management solution: Cubit, Bloc, Provider, Riverpod, GetX, setState, and more!
 
 ## Features
 
+- **Universal**: Works with ANY state management (Cubit, Bloc, Provider, Riverpod, GetX, setState)
 - **PaginatedListView**: Automatic infinite scrolling list with pull-to-refresh
 - **PaginatedGridView**: Grid layout with pagination support
-- **PaginationMixin**: Powerful mixin for Cubit/Bloc with zero boilerplate
-- **Flexible**: Works with any API structure (offset-based, page-based, cursor-based)
+- **PaginationMixin**: Powerful mixin with zero framework dependencies
+- **Flexible**: Supports offset-based, page-based, and cursor-based pagination
 - **Type-safe**: Fully generic implementation
 - **Customizable**: Loading indicators, empty states, thresholds, and more
 
-## Installation
-
-Add this to your `pubspec.yaml`:
-
-```yaml
-dependencies:
-  flutter_pagination_helper: ^1.0.0
-  flutter_bloc: ^8.1.3
-  flutter_screenutil: ^5.9.0
-```
-
 ## Quick Start
 
-### 1. Using PaginatedListView
+### 1. Using PaginatedListView (Works with ANY state management)
 
 ```dart
 import 'package:flutter_pagination_helper/flutter_pagination_helper.dart';
 
 PaginatedListView<Product>(
-  items: state.products,
-  isLoadingMore: state.isLoadingMore,
-  onRefresh: () => cubit.refresh(),
-  onLoadMore: () => cubit.loadMore(),
+  items: products,  // Your list from any state management
+  isLoadingMore: isLoadingMore,  // Your loading flag
+  onRefresh: () => refresh(),  // Your refresh function
+  onLoadMore: () => loadMore(),  // Your load more function
   itemBuilder: (context, product, index) {
     return ListTile(
       title: Text(product.name),
@@ -46,33 +36,52 @@ PaginatedListView<Product>(
 )
 ```
 
-### 2. Using PaginationMixin in Cubit
+## State Management Examples
+
+### 🎯 1. Flutter Bloc/Cubit
 
 ```dart
 class ProductCubit extends Cubit<ProductState> with PaginationMixin {
-  ProductCubit() : super(ProductState.initial());
+  final ApiService apiService;
+  
+  ProductCubit({required this.apiService}) : super(ProductState.initial());
 
   Future<void> loadMore() async {
     await loadMoreData<ProductData>(
       fetchData: (offset, limit) async {
-        final response = await api.getProducts(
-          skip: offset,
-          limit: limit,
-        );
-        return ApiResponse.completed(response);
+        // Just return the data directly - throw error if fails
+        return await apiService.getProducts(skip: offset, limit: limit);
       },
       mergeData: (current, newData) => current.copyWith(
         products: [...current.products, ...newData.products],
+        total: newData.total,
       ),
       getCurrentCount: (data) => data.products.length,
       getTotalCount: (data) => data.total,
-      limit: 20,
+      updateState: (isLoading, data, error) {
+        if (error != null) {
+          emit(state.copyWith(
+            isLoadingMore: false,
+            error: error,
+          ));
+        } else if (data != null) {
+          emit(state.copyWith(
+            data: data,
+            isLoadingMore: isLoading,
+            error: null,
+          ));
+        } else {
+          emit(state.copyWith(isLoadingMore: isLoading));
+        }
+      },
+      currentData: state.data,
+      isCurrentlyLoading: state.isLoadingMore,
     );
   }
 
   Future<void> refresh() async {
     emit(state.copyWith(
-      response: ApiResponse.completed(ProductData.empty()),
+      data: ProductData.empty(),
       isLoadingMore: false,
     ));
     await loadMore();
@@ -80,69 +89,344 @@ class ProductCubit extends Cubit<ProductState> with PaginationMixin {
 }
 ```
 
-### 3. State Setup
+### 🎯 2. Provider / ChangeNotifier
 
 ```dart
-class ProductState {
-  final ApiResponse<ProductData> response;
-  final bool isLoadingMore;
+class ProductProvider with ChangeNotifier, PaginationMixin {
+  final ApiService apiService;
+  
+  ProductProvider({required this.apiService});
 
-  ProductState({
-    required this.response,
-    this.isLoadingMore = false,
-  });
+  ProductData _data = ProductData.empty();
+  bool _isLoadingMore = false;
+  String? _error;
 
-  factory ProductState.initial() {
-    return ProductState(
-      response: ApiResponse.completed(ProductData.empty()),
+  ProductData get data => _data;
+  bool get isLoadingMore => _isLoadingMore;
+  String? get error => _error;
+  List<Product> get products => _data.products;
+
+  Future<void> loadMore() async {
+    await loadMoreData<ProductData>(
+      fetchData: (offset, limit) async {
+        return await apiService.getProducts(skip: offset, limit: limit);
+      },
+      mergeData: (current, newData) => current.copyWith(
+        products: [...current.products, ...newData.products],
+        total: newData.total,
+      ),
+      getCurrentCount: (data) => data.products.length,
+      getTotalCount: (data) => data.total,
+      updateState: (isLoading, data, error) {
+        _isLoadingMore = isLoading;
+        if (data != null) _data = data;
+        if (error != null) _error = error;
+        notifyListeners();
+      },
+      currentData: _data,
+      isCurrentlyLoading: _isLoadingMore,
     );
   }
 
-  ProductState copyWith({
-    ApiResponse<ProductData>? response,
-    bool? isLoadingMore,
-  }) {
-    return ProductState(
-      response: response ?? this.response,
-      isLoadingMore: isLoadingMore ?? this.isLoadingMore,
-    );
+  Future<void> refresh() async {
+    _data = ProductData.empty();
+    _isLoadingMore = false;
+    _error = null;
+    notifyListeners();
+    await loadMore();
   }
 }
 
-class ProductData {
-  final List<Product> products;
-  final int total;
-
-  ProductData({required this.products, required this.total});
-
-  factory ProductData.empty() => ProductData(products: [], total: 0);
-
-  ProductData copyWith({List<Product>? products, int? total}) {
-    return ProductData(
-      products: products ?? this.products,
-      total: total ?? this.total,
+// Usage in Widget
+class ProductListPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ProductProvider>(
+      builder: (context, provider, child) {
+        return PaginatedListView<Product>(
+          items: provider.products,
+          isLoadingMore: provider.isLoadingMore,
+          onRefresh: () => provider.refresh(),
+          onLoadMore: () => provider.loadMore(),
+          itemBuilder: (context, product, index) => ProductCard(product),
+        );
+      },
     );
   }
 }
 ```
 
-## Advanced Usage
-
-### Page-Based Pagination
-
-If your API uses page numbers instead of offsets:
+### 🎯 3. Riverpod
 
 ```dart
-await loadMoreWithPage<ProductData>(
-  fetchData: (page, limit) async {
-    final response = await api.getProducts(page: page, limit: limit);
-    return ApiResponse.completed(response);
+class ProductNotifier extends StateNotifier<ProductState> with PaginationMixin {
+  ProductNotifier(this.apiService) : super(ProductState.initial());
+  
+  final ApiService apiService;
+
+  Future<void> loadMore() async {
+    await loadMoreData<ProductData>(
+      fetchData: (offset, limit) async {
+        return await apiService.getProducts(skip: offset, limit: limit);
+      },
+      mergeData: (current, newData) => current.copyWith(
+        products: [...current.products, ...newData.products],
+        total: newData.total,
+      ),
+      getCurrentCount: (data) => data.products.length,
+      getTotalCount: (data) => data.total,
+      updateState: (isLoading, data, error) {
+        state = state.copyWith(
+          isLoadingMore: isLoading,
+          data: data ?? state.data,
+          error: error,
+        );
+      },
+      currentData: state.data,
+      isCurrentlyLoading: state.isLoadingMore,
+    );
+  }
+}
+
+final productProvider = StateNotifierProvider<ProductNotifier, ProductState>(
+  (ref) => ProductNotifier(ref.watch(apiServiceProvider))..loadMore(),
+);
+
+// Usage in Widget
+class ProductListPage extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(productProvider);
+    final notifier = ref.read(productProvider.notifier);
+    
+    return PaginatedListView<Product>(
+      items: state.data.products,
+      isLoadingMore: state.isLoadingMore,
+      onRefresh: () => notifier.refresh(),
+      onLoadMore: () => notifier.loadMore(),
+      itemBuilder: (context, product, index) => ProductCard(product),
+    );
+  }
+}
+```
+
+### 🎯 4. GetX
+
+```dart
+class ProductController extends GetxController with PaginationMixin {
+  final ApiService apiService;
+  
+  ProductController({required this.apiService});
+
+  final products = <Product>[].obs;
+  final isLoadingMore = false.obs;
+  final total = 0.obs;
+  final error = Rxn<String>();
+
+  @override
+  void onInit() {
+    super.onInit();
+    loadMore();
+  }
+
+  Future<void> loadMore() async {
+    final currentData = ProductData(
+      products: products.toList(),
+      total: total.value,
+    );
+
+    await loadMoreData<ProductData>(
+      fetchData: (offset, limit) async {
+        return await apiService.getProducts(skip: offset, limit: limit);
+      },
+      mergeData: (current, newData) => ProductData(
+        products: [...current.products, ...newData.products],
+        total: newData.total,
+      ),
+      getCurrentCount: (data) => data.products.length,
+      getTotalCount: (data) => data.total,
+      updateState: (isLoading, data, err) {
+        isLoadingMore.value = isLoading;
+        if (data != null) {
+          products.value = data.products;
+          total.value = data.total;
+        }
+        if (err != null) error.value = err;
+      },
+      currentData: currentData,
+      isCurrentlyLoading: isLoadingMore.value,
+    );
+  }
+
+  Future<void> refresh() async {
+    products.clear();
+    total.value = 0;
+    isLoadingMore.value = false;
+    error.value = null;
+    await loadMore();
+  }
+}
+
+// Usage in Widget
+class ProductListPage extends StatelessWidget {
+  final controller = Get.put(ProductController(
+    apiService: Get.find<ApiService>(),
+  ));
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() => PaginatedListView<Product>(
+      items: controller.products,
+      isLoadingMore: controller.isLoadingMore.value,
+      onRefresh: () => controller.refresh(),
+      onLoadMore: () => controller.loadMore(),
+      itemBuilder: (context, product, index) => ProductCard(product),
+    ));
+  }
+}
+```
+
+### 🎯 5. setState (StatefulWidget)
+
+```dart
+class ProductListPage extends StatefulWidget {
+  @override
+  State<ProductListPage> createState() => _ProductListPageState();
+}
+
+class _ProductListPageState extends State<ProductListPage> with PaginationMixin {
+  final ApiService apiService = ApiService();
+  
+  List<Product> products = [];
+  bool isLoadingMore = false;
+  int total = 0;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    loadMore();
+  }
+
+  Future<void> loadMore() async {
+    final currentData = ProductData(products: products, total: total);
+
+    await loadMoreData<ProductData>(
+      fetchData: (offset, limit) async {
+        return await apiService.getProducts(skip: offset, limit: limit);
+      },
+      mergeData: (current, newData) => ProductData(
+        products: [...current.products, ...newData.products],
+        total: newData.total,
+      ),
+      getCurrentCount: (data) => data.products.length,
+      getTotalCount: (data) => data.total,
+      updateState: (isLoading, data, err) {
+        setState(() {
+          isLoadingMore = isLoading;
+          if (data != null) {
+            products = data.products;
+            total = data.total;
+          }
+          if (err != null) error = err;
+        });
+      },
+      currentData: currentData,
+      isCurrentlyLoading: isLoadingMore,
+    );
+  }
+
+  Future<void> refresh() async {
+    setState(() {
+      products = [];
+      total = 0;
+      isLoadingMore = false;
+      error = null;
+    });
+    await loadMore();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PaginatedListView<Product>(
+      items: products,
+      isLoadingMore: isLoadingMore,
+      onRefresh: refresh,
+      onLoadMore: loadMore,
+      itemBuilder: (context, product, index) => ProductCard(product: product),
+    );
+  }
+}
+```
+
+## Advanced Features
+
+### Pagination Types
+
+#### 1. Offset-Based Pagination (Default)
+```dart
+await loadMoreData<ProductData>(
+  fetchData: (offset, limit) async {
+    // offset = 0, 10, 20, 30...
+    // Return data directly, throw on error
+    return await api.getProducts(skip: offset, limit: limit);
   },
   mergeData: (current, newData) => current.copyWith(
     products: [...current.products, ...newData.products],
   ),
   getCurrentCount: (data) => data.products.length,
   getTotalCount: (data) => data.total,
+  updateState: (isLoading, data, error) {
+    // Handle state update
+  },
+  currentData: yourCurrentData,
+  isCurrentlyLoading: yourLoadingFlag,
+);
+```
+
+#### 2. Page-Based Pagination
+```dart
+await loadMoreWithPage<ProductData>(
+  fetchData: (page, limit) async {
+    // page = 1, 2, 3, 4...
+    return await api.getProducts(page: page, limit: limit);
+  },
+  mergeData: (current, newData) => current.copyWith(
+    products: [...current.products, ...newData.products],
+  ),
+  getCurrentCount: (data) => data.products.length,
+  getTotalCount: (data) => data.total,
+  updateState: (isLoading, data, error) {
+    // Handle state update
+  },
+  currentData: yourCurrentData,
+  isCurrentlyLoading: yourLoadingFlag,
+);
+```
+
+### Error Handling
+
+```dart
+await loadMoreData<ProductData>(
+  fetchData: (offset, limit) async {
+    try {
+      return await api.getProducts(skip: offset, limit: limit);
+    } catch (e) {
+      // API will throw, mixin catches it
+      throw Exception('Failed to load products: $e');
+    }
+  },
+  // ... other params
+  updateState: (isLoading, data, error) {
+    if (error != null) {
+      // Handle error in your state
+      showErrorSnackbar(error);
+    }
+  },
+  onError: (error) {
+    // Optional: Additional error handling
+    print('Pagination error: $error');
+  },
 );
 ```
 
@@ -243,11 +527,33 @@ Includes all parameters from PaginatedListView plus:
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| fetchData | Future\<ApiResponse\<TData\>\> Function(int, int) | Fetch function receiving (offset, limit) |
+| fetchData | Future\<TData\> Function(int, int) | Fetch function receiving (offset, limit). Return data or throw error. |
 | mergeData | TData Function(TData, TData) | Function to merge current and new data |
 | getCurrentCount | int Function(TData) | Get current item count |
 | getTotalCount | int Function(TData) | Get total available items |
+| updateState | void Function(bool, TData?, String?) | Update state with (isLoading, data, error) |
+| currentData | TData | Current data from your state |
+| isCurrentlyLoading | bool | Whether currently loading |
 | limit | int | Items per page (default: 10) |
+| onError | void Function(dynamic)? | Optional error callback |
+
+#### loadMoreWithPage\<TData\>
+
+Same as `loadMoreData` but `fetchData` receives `(page, limit)` where page starts from 1.
+
+#### loadMoreWithCursor\<TData\>
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| fetchData | Future\<TData\> Function(String?, int) | Fetch with cursor |
+| mergeData | TData Function(TData, TData) | Merge function |
+| getNextCursor | String? Function(TData) | Extract next cursor |
+| hasMoreData | bool Function(TData) | Check if more data available |
+| updateState | void Function(bool, TData?, String?) | State update callback |
+| currentData | TData | Current data |
+| isCurrentlyLoading | bool | Loading state |
+| limit | int | Items per page (default: 10) |
+| onError | void Function(dynamic)? | Optional error callback |
 
 ## Requirements
 
@@ -262,9 +568,15 @@ MIT License
 
 Contributions are welcome! Please open an issue or submit a pull request.
 
+1. Fork the repository (`https://github.com/munawerdev/mason_cli`)
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
 ## Author
 
-Your Name
+Munawer
 
 ## Changelog
 
