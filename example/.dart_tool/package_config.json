@@ -50,12 +50,6 @@
       "languageVersion": "3.1"
     },
     {
-      "name": "flutter_pagination_helper",
-      "rootUri": "../../",
-      "packageUri": "lib/",
-      "languageVersion": "3.0"
-    },
-    {
       "name": "flutter_test",
       "rootUri": "file:///C:/Users/Xenonapps/fvm/versions/3.35.1/packages/flutter_test",
       "packageUri": "lib/",
@@ -102,6 +96,12 @@
       "rootUri": "file:///C:/Users/Xenonapps/AppData/Local/Pub/Cache/hosted/pub.dev/meta-1.16.0",
       "packageUri": "lib/",
       "languageVersion": "2.12"
+    },
+    {
+      "name": "pagination_helper",
+      "rootUri": "../../",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
     },
     {
       "name": "path",
@@ -164,7 +164,7 @@
       "languageVersion": "3.5"
     },
     {
-      "name": "flutter_pagination_helper_example",
+      "name": "pagination_helper_example",
       "rootUri": "../",
       "packageUri": "lib/",
       "languageVersion": "3.0"

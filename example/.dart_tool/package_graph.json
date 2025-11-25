@@ -1,14 +1,14 @@
 {
   "roots": [
-    "flutter_pagination_helper_example"
+    "pagination_helper_example"
   ],
   "packages": [
     {
-      "name": "flutter_pagination_helper_example",
-      "version": "1.0.0+1",
+      "name": "pagination_helper_example",
+      "version": "1.0.2",
       "dependencies": [
         "flutter",
-        "flutter_pagination_helper"
+        "pagination_helper"
       ],
       "devDependencies": [
         "flutter_lints",
@@ -41,7 +41,7 @@
       ]
     },
     {
-      "name": "flutter_pagination_helper",
+      "name": "pagination_helper",
       "version": "1.0.2",
       "dependencies": [
         "flutter"
