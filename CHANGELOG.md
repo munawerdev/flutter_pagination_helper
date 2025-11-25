@@ -56,6 +56,11 @@ All notable changes to this project will be documented in this file.
 - Add `.pubignore` to exclude unwanted files from the package.
 - Fix README contributing link to correct repository.
 
+## [1.0.3] - 2025-11-25
+
+### Changed
+- Updated README documentation with improved structure, examples, and API reference
+
 ## [Unreleased]
 
 ### Planned
