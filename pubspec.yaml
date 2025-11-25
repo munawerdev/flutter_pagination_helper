@@ -1,6 +1,6 @@
 name: pagination_helper
 description: A lightweight and reusable Flutter package for implementing pagination with minimal boilerplate. Includes paginated list/grid views and a powerful pagination mixin.
-version: 1.0.2
+version: 1.0.3
 homepage: https://github.com/munawerdev/pagination_helper
 repository: https://github.com/munawerdev/pagination_helper
 issue_tracker: https://github.com/munawerdev/pagination_helper/issues
